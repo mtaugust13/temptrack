@@ -150,6 +150,43 @@
     <!-- ── Main content (revealed after load) ────────────────────────────── -->
     <div id="main-content" class="hidden space-y-5">
 
+      <!-- Add record form -->
+      <div class="card">
+        <h2 class="text-base font-semibold text-gray-600 mb-4">✏️ 新增 / 更新記錄</h2>
+        <form id="record-form" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+
+          <div>
+            <label class="block text-sm font-medium text-gray-500 mb-1">日期</label>
+            <input id="date-input" type="date" required
+              class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium text-gray-500 mb-1">體溫 (°C)</label>
+            <input id="temp-input" type="number" step="0.01" min="35" max="42"
+              placeholder="36.50" required
+              class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium text-gray-500 mb-1">事件（可選）</label>
+            <select id="event-input"
+              class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white">
+              <option value="">— 無特殊事件 —</option>
+              <option value="月經第一天">🩸 月經第一天</option>
+              <option value="排卵期">🥚 排卵期</option>
+            </select>
+          </div>
+
+          <div class="flex items-end">
+            <button id="submit-btn" type="submit"
+              class="w-full px-4 py-2 bg-purple-600 hover:bg-purple-700 active:bg-purple-800 text-white rounded-lg font-medium text-sm transition">
+              記錄
+            </button>
+          </div>
+        </form>
+      </div>
+
       <!-- Prediction cards -->
       <section>
         <h2 class="text-base font-semibold text-gray-600 mb-3">📅 週期預測</h2>
@@ -186,43 +223,6 @@
         </div>
         <div id="chart"></div>
         <div id="chart-empty" class="hidden text-center py-14 text-gray-400">尚無體溫記錄，請先新增記錄</div>
-      </div>
-
-      <!-- Add record form -->
-      <div class="card">
-        <h2 class="text-base font-semibold text-gray-600 mb-4">✏️ 新增 / 更新記錄</h2>
-        <form id="record-form" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-
-          <div>
-            <label class="block text-sm font-medium text-gray-500 mb-1">日期</label>
-            <input id="date-input" type="date" required
-              class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
-          </div>
-
-          <div>
-            <label class="block text-sm font-medium text-gray-500 mb-1">體溫 (°C)</label>
-            <input id="temp-input" type="number" step="0.01" min="35" max="42"
-              placeholder="36.50" required
-              class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
-          </div>
-
-          <div>
-            <label class="block text-sm font-medium text-gray-500 mb-1">事件（可選）</label>
-            <select id="event-input"
-              class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white">
-              <option value="">— 無特殊事件 —</option>
-              <option value="月經第一天">🩸 月經第一天</option>
-              <option value="排卵期">🥚 排卵期</option>
-            </select>
-          </div>
-
-          <div class="flex items-end">
-            <button id="submit-btn" type="submit"
-              class="w-full px-4 py-2 bg-purple-600 hover:bg-purple-700 active:bg-purple-800 text-white rounded-lg font-medium text-sm transition">
-              記錄
-            </button>
-          </div>
-        </form>
       </div>
 
       <!-- Records table -->

@@ -230,45 +230,47 @@ function renderChart() {
       fillcolor: "rgba(245,158,11,.07)", line: { width: 0 },
     });
   }
-  // ── BBT pattern ─────────────────────────────────────────────────────
-  if (p.bbt_coverline && p.last_period) {
-    const shiftEnd = p.bbt_shift_date || fmt(viewEnd);
+  // ── BBT phase shading ───────────────────────────────────────────────
+  // Use BBT-detected shift if available, otherwise fall back to predicted ovulation
+  if (p.last_period) {
+    const divider = p.bbt_shift_date || p.predicted_ovulation;
     const cycleEnd = p.predicted_next_period || fmt(viewEnd);
 
-    // Low-phase tint (period start → shift)
-    shapes.push({
-      type: "rect",
-      x0: p.last_period, x1: shiftEnd,
-      y0: 0, y1: 1, yref: "paper",
-      fillcolor: "rgba(147,197,253,.08)", line: { width: 0 },
-    });
-
-    // High-phase tint (shift → predicted next period)
-    if (p.bbt_shift_date) {
+    // Low-phase tint: period start → ovulation
+    if (divider) {
       shapes.push({
         type: "rect",
-        x0: p.bbt_shift_date, x1: cycleEnd,
+        x0: p.last_period, x1: divider,
         y0: 0, y1: 1, yref: "paper",
-        fillcolor: "rgba(252,165,165,.08)", line: { width: 0 },
+        fillcolor: "rgba(147,197,253,.12)", line: { width: 0 },
+      });
+      // High-phase tint: ovulation → next period
+      shapes.push({
+        type: "rect",
+        x0: divider, x1: cycleEnd,
+        y0: 0, y1: 1, yref: "paper",
+        fillcolor: "rgba(252,165,165,.12)", line: { width: 0 },
       });
     }
 
-    // Coverline — horizontal dashed grey line across current cycle
-    shapes.push({
-      type: "line",
-      x0: p.last_period, x1: cycleEnd,
-      y0: p.bbt_coverline, y1: p.bbt_coverline,
-      xref: "x", yref: "y",
-      line: { color: "rgba(107,114,128,.45)", width: 1.5, dash: "dot" },
-    });
-    annotations.push({
-      x: p.last_period, y: p.bbt_coverline,
-      xref: "x", yref: "y",
-      text: `基線 ${p.bbt_coverline}°C`,
-      showarrow: false,
-      font: { color: "#6B7280", size: 9 },
-      xanchor: "left", yanchor: "bottom",
-    });
+    // Coverline — only when BBT detection has fired
+    if (p.bbt_coverline) {
+      shapes.push({
+        type: "line",
+        x0: p.last_period, x1: cycleEnd,
+        y0: p.bbt_coverline, y1: p.bbt_coverline,
+        xref: "x", yref: "y",
+        line: { color: "rgba(107,114,128,.45)", width: 1.5, dash: "dot" },
+      });
+      annotations.push({
+        x: p.last_period, y: p.bbt_coverline,
+        xref: "x", yref: "y",
+        text: `基線 ${p.bbt_coverline}°C`,
+        showarrow: false,
+        font: { color: "#6B7280", size: 9 },
+        xanchor: "left", yanchor: "bottom",
+      });
+    }
   }
 
   // BBT-detected ovulation marker (only when no manual 排卵期 on that date)
