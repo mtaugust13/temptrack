@@ -188,8 +188,9 @@ function renderChart() {
   chartEl.style.display = "block";
   emptyEl.classList.add("hidden");
 
-  const dates = records.map(r => r.date);
-  const temps = records.map(r => r.temperature);
+  const tempRecords = records.filter(r => r.temperature !== null);
+  const dates = tempRecords.map(r => r.date);
+  const temps = tempRecords.map(r => r.temperature);
 
   // ── Traces ──────────────────────────────────────────────────────
   const traceLine = {
@@ -203,8 +204,8 @@ function renderChart() {
 
   const traces = [traceLine];
 
-  const periodRecs    = records.filter(r => r.event === "月經第一天");
-  const ovulationRecs = records.filter(r => r.event === "排卵期");
+  const periodRecs    = records.filter(r => r.event === "月經第一天" && r.temperature !== null);
+  const ovulationRecs = records.filter(r => r.event === "排卵期" && r.temperature !== null);
 
   if (periodRecs.length) {
     traces.push({
@@ -228,7 +229,7 @@ function renderChart() {
     });
   }
 
-  const sexRecs = records.filter(r => r.event === "同房");
+  const sexRecs = records.filter(r => r.event === "同房" && r.temperature !== null);
   if (sexRecs.length) {
     traces.push({
       type: "scatter", mode: "markers",
@@ -239,6 +240,19 @@ function renderChart() {
       hovertemplate: "<b>%{x}</b><br>💑 同房<br>%{y}°C<extra></extra>",
     });
   }
+
+  // 同房 without temperature: vertical amber dotted lines
+  records.filter(r => r.event === "同房" && r.temperature === null).forEach(r => {
+    shapes.push({
+      type: "line",
+      x0: r.date, x1: r.date, y0: 0, y1: 1, yref: "paper",
+      line: { color: "rgba(245,158,11,0.45)", width: 1.5, dash: "dot" },
+    });
+    annotations.push({
+      x: r.date, y: 0.04, yref: "paper",
+      text: "💑", showarrow: false, font: { size: 11 },
+    });
+  });
 
   // ── Shapes & Annotations ────────────────────────────────────────
   const shapes      = [];
@@ -418,7 +432,7 @@ function renderTable() {
     return `
       <tr class="border-b border-gray-50 hover:bg-gray-50 transition">
         <td class="py-2 text-gray-700">${r.date}</td>
-        <td class="py-2 font-mono text-purple-700 font-medium">${r.temperature.toFixed(2)}°C</td>
+        <td class="py-2 font-mono text-purple-700 font-medium">${r.temperature !== null ? r.temperature.toFixed(2) + '°C' : '<span class="text-gray-300">—</span>'}</td>
         <td class="py-2">${tag}</td>
         <td class="py-2 text-right">
           <button onclick="deleteRecord('${r.date}')"
@@ -436,25 +450,39 @@ function renderTable() {
 async function handleSubmit(e) {
   e.preventDefault();
 
-  const date        = document.getElementById("date-input").value;
-  const tempRaw     = document.getElementById("temp-input").value;
-  const event       = document.getElementById("event-input").value;
-  const btn         = document.getElementById("submit-btn");
-  const temperature = parseFloat(tempRaw);
+  const date     = document.getElementById("date-input").value;
+  const tempRaw  = document.getElementById("temp-input").value.trim();
+  const event    = document.getElementById("event-input").value;
+  const btn      = document.getElementById("submit-btn");
 
   if (!date) { showToast("請填寫日期", "error"); return; }
-  if (isNaN(temperature) || temperature < 35 || temperature > 42) {
-    showToast("體溫請輸入 35.0–42.0°C 之間的數值", "error");
+
+  const hasTemp  = tempRaw !== "";
+  const hasEvent = event !== "";
+  if (!hasTemp && !hasEvent) {
+    showToast("請填寫體溫或選擇事件", "error");
     return;
+  }
+
+  let temperature;
+  if (hasTemp) {
+    temperature = parseFloat(tempRaw);
+    if (isNaN(temperature) || temperature < 35 || temperature > 42) {
+      showToast("體溫請輸入 35.0–42.0°C 之間的數値", "error");
+      return;
+    }
   }
 
   btn.disabled    = true;
   btn.textContent = "記錄中…";
 
   try {
-    const result = await apiRequest("/api/record", "POST", { date, temperature, event });
-    const verb   = result.action === "updated" ? "已更新" : "已新增";
-    showToast(`✓ ${verb}：${date}  ${temperature.toFixed(2)}°C${event ? "  · " + event : ""}`, "success");
+    const payload = { date, event };
+    if (hasTemp) payload.temperature = temperature;
+    const result = await apiRequest("/api/record", "POST", payload);
+    const verb     = result.action === "updated" ? "已更新" : "已新增";
+    const tempStr  = hasTemp ? `  ${temperature.toFixed(2)}°C` : "";
+    showToast(`✓ ${verb}：${date}${tempStr}${event ? "  · " + event : ""}`, "success");
     document.getElementById("temp-input").value  = "";
     document.getElementById("event-input").value = "";
     await loadData();
