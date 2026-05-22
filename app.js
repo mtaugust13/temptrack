@@ -53,8 +53,48 @@ async function loadData() {
 
 function renderAll() {
   renderPredictions();
+  renderCycleInsight();
   renderChart();
   renderTable();
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  Cycle insight (fertile window timing)
+// ═══════════════════════════════════════════════════════════════════
+function renderCycleInsight() {
+  const el = document.getElementById("cycle-insight");
+  if (!el) return;
+  const { records, predictions: p } = appData;
+  if (!p || !p.fertile_window_start || !p.fertile_window_end || !records) {
+    el.textContent = ""; return;
+  }
+
+  const ws = new Date(p.fertile_window_start);
+  const we = new Date(p.fertile_window_end);
+
+  // 同房 records that fall within the fertile window
+  const hits = records.filter(r => {
+    if (r.event !== "同房") return false;
+    const d = new Date(r.date);
+    return d >= ws && d <= we;
+  });
+
+  function fmtShort(str) {
+    const [, m, d] = str.split("-");
+    return `${parseInt(m)}/${parseInt(d)}`;
+  }
+
+  const windowStr = `${fmtShort(p.fertile_window_start)}–${fmtShort(p.fertile_window_end)}`;
+
+  if (hits.length === 0) {
+    // Only show if the fertile window is current or upcoming (not past > 3 days)
+    const daysSinceEnd = Math.round((new Date() - we) / 86_400_000);
+    if (daysSinceEnd > 3) { el.textContent = ""; return; }
+    el.innerHTML = `本週期易孕期（${windowStr}）尚無同房記錄`;
+  } else {
+    const dots = "💑".repeat(Math.min(hits.length, 5));
+    el.innerHTML = `易孕期（${windowStr}）內共記錄 ${hits.length} 次&ensp;${dots}`;
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -185,6 +225,18 @@ function renderChart() {
       name: "排卵期",
       marker: { color: "#10B981", symbol: "diamond", size: 10, line: { color: "#fff", width: 2 } },
       hovertemplate: "<b>%{x}</b><br>🥚 排卵期<br>%{y}°C<extra></extra>",
+    });
+  }
+
+  const sexRecs = records.filter(r => r.event === "同房");
+  if (sexRecs.length) {
+    traces.push({
+      type: "scatter", mode: "markers",
+      x: sexRecs.map(r => r.date),
+      y: sexRecs.map(r => r.temperature),
+      name: "同房",
+      marker: { color: "#F59E0B", symbol: "circle", size: 8, line: { color: "#fff", width: 2 } },
+      hovertemplate: "<b>%{x}</b><br>💑 同房<br>%{y}°C<extra></extra>",
     });
   }
 
@@ -360,7 +412,7 @@ function renderTable() {
 
   tbody.innerHTML = rows.map(r => {
     const tag = r.event
-      ? `<span class="${r.event === "月經第一天" ? "tag-period" : "tag-ovulation"}">${r.event}</span>`
+      ? `<span class="${r.event === "月經第一天" ? "tag-period" : r.event === "同房" ? "tag-sex" : "tag-ovulation"}">${r.event}</span>`
       : `<span class="text-gray-300 text-xs">—</span>`;
 
     return `
