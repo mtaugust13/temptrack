@@ -144,7 +144,7 @@ function renderPredictions() {
       value: (p.fertile_window_start && p.fertile_window_end)
         ? `${fmt(p.fertile_window_start)} – ${fmt(p.fertile_window_end)}`
         : "—",
-      sub: "排卵前 5 天至排卵日",
+      sub: p.fertile_window_confirmed ? "BBT 確認 ✓" : "排卵前 5 天至排卵日",
       color: "#F59E0B", bg: "#FFFBEB",
     },
     {
@@ -395,7 +395,7 @@ function renderChart() {
     },
     shapes, annotations,
     legend: { orientation: "h", y: -0.2, x: 0.5, xanchor: "center" },
-    hovermode: "x unified",
+    hovermode: "closest",
     plot_bgcolor:  "#FAFAFA",
     paper_bgcolor: "#FFFFFF",
     margin: { l: 55, r: 18, t: 12, b: 60 },
