@@ -1,0 +1,459 @@
+// ═══════════════════════════════════════════════════════════════════
+//  CONFIG  ← update API_URL after deploying the backend to Cloud Run
+// ═══════════════════════════════════════════════════════════════════
+const CONFIG = {
+  API_URL:   "https://temp-tracker-347858381394.asia-east1.run.app",
+  API_KEY:   "1qYoGGgL7aYsqjYEk8QNTmIpDoC6VJRd",
+  SHEET_URL: "https://docs.google.com/spreadsheets/d/1RGMRPRJqeQuZxEVCrAQHTsmtLaMtOFiRDPafLLTI0jA/edit?gid=0#gid=0",
+};
+
+// ═══════════════════════════════════════════════════════════════════
+//  State
+// ═══════════════════════════════════════════════════════════════════
+let appData = { records: [], predictions: {} };
+
+// ═══════════════════════════════════════════════════════════════════
+//  API helpers
+// ═══════════════════════════════════════════════════════════════════
+async function apiRequest(endpoint, method = "GET", body = null) {
+  const headers = { "Content-Type": "application/json" };
+  if (CONFIG.API_KEY) headers["X-API-Key"] = CONFIG.API_KEY;
+  const opts = { method, headers };
+  if (body) opts.body = JSON.stringify(body);
+
+  const res = await fetch(CONFIG.API_URL + endpoint, opts);
+  const json = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+  if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+  return json;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  Load data
+// ═══════════════════════════════════════════════════════════════════
+async function loadData() {
+  if (CONFIG.API_URL.includes("YOUR-CLOUD-RUN-URL")) {
+    document.getElementById("config-warning").classList.remove("hidden");
+    document.getElementById("loading-state").classList.add("hidden");
+    return;
+  }
+
+  setLoading(true);
+  hideError();
+
+  try {
+    appData = await apiRequest("/api/data");
+    document.getElementById("main-content").classList.remove("hidden");
+    renderAll();
+  } catch (e) {
+    showError(e.message);
+  } finally {
+    setLoading(false);
+  }
+}
+
+function renderAll() {
+  renderPredictions();
+  renderChart();
+  renderTable();
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  Prediction cards
+// ═══════════════════════════════════════════════════════════════════
+function renderPredictions() {
+  const p = appData.predictions || {};
+  const container = document.getElementById("pred-grid");
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  function daysUntil(str) {
+    if (!str) return null;
+    return Math.round((new Date(str) - today) / 86_400_000);
+  }
+
+  function daysLabel(str) {
+    const d = daysUntil(str);
+    if (d === null) return "";
+    if (d < 0)  return `已過 ${-d} 天`;
+    if (d === 0) return "今天";
+    return `還有 ${d} 天`;
+  }
+
+  function fmt(str) {
+    if (!str) return "—";
+    const [, m, d] = str.split("-");
+    return `${parseInt(m)}/${parseInt(d)}`;
+  }
+
+  const cards = [
+    {
+      icon: "🩸", title: "上次月經",
+      value: fmt(p.last_period),
+      sub: p.last_period || "尚無記錄",
+      color: "#EF4444", bg: "#FEF2F2",
+    },
+    {
+      icon: "🥚", title: "預計排卵期",
+      value: fmt(p.predicted_ovulation),
+      sub: daysLabel(p.predicted_ovulation),
+      color: "#10B981", bg: "#ECFDF5",
+    },
+    {
+      icon: "✨", title: "易孕期",
+      value: (p.fertile_window_start && p.fertile_window_end)
+        ? `${fmt(p.fertile_window_start)} – ${fmt(p.fertile_window_end)}`
+        : "—",
+      sub: "排卵前 5 天至排卵日",
+      color: "#F59E0B", bg: "#FFFBEB",
+    },
+    {
+      icon: "📅", title: "預計下次月經",
+      value: fmt(p.predicted_next_period),
+      sub: daysLabel(p.predicted_next_period),
+      color: "#8B5CF6", bg: "#F5F3FF",
+    },
+    {
+      icon: "📊", title: "平均週期",
+      value: p.avg_cycle_length ? `${p.avg_cycle_length} 天` : "—",
+      sub: p.data_cycles ? `基於 ${p.data_cycles} 個週期` : "使用預設值 28 天",
+      color: "#6366F1", bg: "#EEF2FF",
+    },
+  ];
+
+  container.innerHTML = cards.map(c => `
+    <div class="card pred-card" style="border-left-color:${c.color};background:${c.bg};">
+      <div class="text-xl mb-1">${c.icon}</div>
+      <div class="text-xs font-medium text-gray-400 mb-1">${c.title}</div>
+      <div class="text-lg font-bold leading-tight" style="color:${c.color}">${c.value}</div>
+      <div class="text-xs text-gray-400 mt-1">${c.sub}</div>
+    </div>
+  `).join("");
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  Plotly chart
+// ═══════════════════════════════════════════════════════════════════
+function renderChart() {
+  const { records, predictions: p } = appData;
+
+  const chartEl  = document.getElementById("chart");
+  const emptyEl  = document.getElementById("chart-empty");
+
+  if (!records || records.length === 0) {
+    chartEl.style.display = "none";
+    emptyEl.classList.remove("hidden");
+    return;
+  }
+  chartEl.style.display = "block";
+  emptyEl.classList.add("hidden");
+
+  const dates = records.map(r => r.date);
+  const temps = records.map(r => r.temperature);
+
+  // ── Traces ──────────────────────────────────────────────────────
+  const traceLine = {
+    type: "scatter", mode: "lines+markers",
+    x: dates, y: temps,
+    name: "基礎體溫",
+    line:   { color: "#7C3AED", width: 2 },
+    marker: { size: 5, color: "#7C3AED" },
+    hovertemplate: "<b>%{x}</b><br>體溫：%{y}°C<extra></extra>",
+  };
+
+  const traces = [traceLine];
+
+  const periodRecs    = records.filter(r => r.event === "月經第一天");
+  const ovulationRecs = records.filter(r => r.event === "排卵期");
+
+  if (periodRecs.length) {
+    traces.push({
+      type: "scatter", mode: "markers",
+      x: periodRecs.map(r => r.date),
+      y: periodRecs.map(r => r.temperature),
+      name: "月經第一天",
+      marker: { color: "#EF4444", symbol: "circle",  size: 10, line: { color: "#fff", width: 2 } },
+      hovertemplate: "<b>%{x}</b><br>🩸 月經第一天<br>%{y}°C<extra></extra>",
+    });
+  }
+
+  if (ovulationRecs.length) {
+    traces.push({
+      type: "scatter", mode: "markers",
+      x: ovulationRecs.map(r => r.date),
+      y: ovulationRecs.map(r => r.temperature),
+      name: "排卵期",
+      marker: { color: "#10B981", symbol: "diamond", size: 10, line: { color: "#fff", width: 2 } },
+      hovertemplate: "<b>%{x}</b><br>🥚 排卵期<br>%{y}°C<extra></extra>",
+    });
+  }
+
+  // ── Shapes & Annotations ────────────────────────────────────────
+  const shapes      = [];
+  const annotations = [];
+
+  function vline(date, color, dash = "solid") {
+    shapes.push({
+      type: "line",
+      x0: date, x1: date, y0: 0, y1: 1, yref: "paper",
+      line: { color, width: 2, dash },
+    });
+  }
+
+  function label(date, text, color, yPos = 0.97) {
+    annotations.push({
+      x: date, y: yPos, yref: "paper",
+      text,
+      showarrow: false,
+      font: { color, size: 10 },
+      bgcolor: "rgba(255,255,255,.88)",
+      bordercolor: color, borderwidth: 1, borderpad: 3,
+      xanchor: "center",
+    });
+  }
+
+  // Actual events — solid lines
+  (p.period_starts || []).forEach(d => vline(d, "rgba(239,68,68,.55)"));
+  (p.ovulation_days || []).forEach(d => vline(d, "rgba(16,185,129,.55)"));
+
+  // Today marker
+  const today = new Date().toISOString().split("T")[0];
+  vline(today, "rgba(107,114,128,.45)", "dot");
+  label(today, "今天", "#6B7280", 0.90);
+
+  // Fertile window (background rect)
+  if (p.fertile_window_start && p.fertile_window_end) {
+    shapes.push({
+      type: "rect",
+      x0: p.fertile_window_start, x1: p.fertile_window_end,
+      y0: 0, y1: 1, yref: "paper",
+      fillcolor: "rgba(245,158,11,.07)", line: { width: 0 },
+    });
+  }
+
+  // Predicted future cycles — dashed lines
+  (p.future_periods || []).forEach((d, i) => {
+    vline(d, "rgba(239,68,68,.38)", "dash");
+    label(d, i === 0 ? "預計月經" : `預計月經 +${i}`, "#EF4444");
+  });
+
+  (p.future_ovulations || []).forEach((d, i) => {
+    vline(d, "rgba(16,185,129,.38)", "dash");
+    label(d, i === 0 ? "預計排卵" : `預計排卵 +${i}`, "#10B981", 0.83);
+  });
+
+  // ── Layout ──────────────────────────────────────────────────────
+  const minY = Math.max(35.5, Math.min(...temps) - 0.15);
+  const maxY = Math.min(38.5, Math.max(...temps) + 0.25);
+
+  const layout = {
+    xaxis: {
+      type: "date", tickformat: "%m/%d",
+      showgrid: true, gridcolor: "#F3F4F6",
+      title: { text: "" },
+    },
+    yaxis: {
+      title: { text: "體溫 (°C)" },
+      range: [minY, maxY],
+      showgrid: true, gridcolor: "#F3F4F6",
+      dtick: 0.1,
+    },
+    shapes, annotations,
+    legend: { orientation: "h", y: -0.2, x: 0.5, xanchor: "center" },
+    hovermode: "x unified",
+    plot_bgcolor:  "#FAFAFA",
+    paper_bgcolor: "#FFFFFF",
+    margin: { l: 55, r: 18, t: 12, b: 60 },
+    font: { family: "Noto Sans TC, sans-serif", size: 12 },
+  };
+
+  Plotly.newPlot("chart", traces, layout, { responsive: true, displayModeBar: false });
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  Records table
+// ═══════════════════════════════════════════════════════════════════
+function renderTable() {
+  const { records } = appData;
+  const tbody  = document.getElementById("records-tbody");
+  const empty  = document.getElementById("records-empty");
+  const count  = document.getElementById("records-count");
+
+  const rows = [...records].reverse().slice(0, 60);
+  count.textContent = `共 ${records.length} 筆`;
+
+  if (rows.length === 0) {
+    tbody.innerHTML = "";
+    empty.classList.remove("hidden");
+    return;
+  }
+  empty.classList.add("hidden");
+
+  tbody.innerHTML = rows.map(r => {
+    const tag = r.event
+      ? `<span class="${r.event === "月經第一天" ? "tag-period" : "tag-ovulation"}">${r.event}</span>`
+      : `<span class="text-gray-300 text-xs">—</span>`;
+
+    return `
+      <tr class="border-b border-gray-50 hover:bg-gray-50 transition">
+        <td class="py-2 text-gray-700">${r.date}</td>
+        <td class="py-2 font-mono text-purple-700 font-medium">${r.temperature.toFixed(2)}°C</td>
+        <td class="py-2">${tag}</td>
+        <td class="py-2 text-right">
+          <button onclick="deleteRecord('${r.date}')"
+            class="text-xs text-gray-400 hover:text-red-500 px-2 py-1 rounded hover:bg-red-50 transition">
+            刪除
+          </button>
+        </td>
+      </tr>`;
+  }).join("");
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  Form submit
+// ═══════════════════════════════════════════════════════════════════
+async function handleSubmit(e) {
+  e.preventDefault();
+
+  const date        = document.getElementById("date-input").value;
+  const tempRaw     = document.getElementById("temp-input").value;
+  const event       = document.getElementById("event-input").value;
+  const btn         = document.getElementById("submit-btn");
+  const temperature = parseFloat(tempRaw);
+
+  if (!date) { showToast("請填寫日期", "error"); return; }
+  if (isNaN(temperature) || temperature < 35 || temperature > 42) {
+    showToast("體溫請輸入 35.0–42.0°C 之間的數值", "error");
+    return;
+  }
+
+  btn.disabled    = true;
+  btn.textContent = "記錄中…";
+
+  try {
+    const result = await apiRequest("/api/record", "POST", { date, temperature, event });
+    const verb   = result.action === "updated" ? "已更新" : "已新增";
+    showToast(`✓ ${verb}：${date}  ${temperature.toFixed(2)}°C${event ? "  · " + event : ""}`, "success");
+    document.getElementById("temp-input").value  = "";
+    document.getElementById("event-input").value = "";
+    await loadData();
+  } catch (err) {
+    showToast(`記錄失敗：${err.message}`, "error");
+  } finally {
+    btn.disabled    = false;
+    btn.textContent = "記錄";
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  Delete record
+// ═══════════════════════════════════════════════════════════════════
+async function deleteRecord(date) {
+  if (!confirm(`確定要刪除 ${date} 的記錄嗎？`)) return;
+  try {
+    await apiRequest("/api/record", "DELETE", { date });
+    showToast(`已刪除 ${date}`, "info");
+    await loadData();
+  } catch (err) {
+    showToast(`刪除失敗：${err.message}`, "error");
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  UI helpers
+// ═══════════════════════════════════════════════════════════════════
+function setLoading(show) {
+  document.getElementById("loading-state").classList.toggle("hidden", !show);
+}
+
+function showError(msg) {
+  setLoading(false);
+  document.getElementById("error-state").classList.remove("hidden");
+  document.getElementById("error-msg").textContent = msg;
+}
+
+function hideError() {
+  document.getElementById("error-state").classList.add("hidden");
+}
+
+let _toastTimer;
+function showToast(msg, type = "info") {
+  const el = document.getElementById("toast");
+  el.textContent = msg;
+  el.className   = `toast ${type} show`;
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => el.classList.remove("show"), 3800);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  Init
+// ═══════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════
+//  PIN lock
+// ═══════════════════════════════════════════════════════════════════
+const CORRECT_PIN = "0209";
+
+function initPin() {
+  const overlay = document.getElementById("pin-overlay");
+
+  // Already unlocked this session — skip
+  if (sessionStorage.getItem("pinUnlocked") === "1") {
+    overlay.remove();
+    return;
+  }
+
+  const digits = Array.from(document.querySelectorAll(".pin-digit"));
+  digits[0].focus();
+
+  digits.forEach((input, i) => {
+    input.addEventListener("input", () => {
+      // Keep only one digit
+      input.value = input.value.slice(-1).replace(/\D/, "");
+      if (input.value && i < 3) digits[i + 1].focus();
+      if (digits.every(d => d.value !== "")) verifyPin(digits, overlay);
+    });
+
+    input.addEventListener("keydown", e => {
+      if (e.key === "Backspace" && !input.value && i > 0) {
+        digits[i - 1].value = "";
+        digits[i - 1].focus();
+      }
+    });
+  });
+}
+
+function verifyPin(digits, overlay) {
+  const entered = digits.map(d => d.value).join("");
+  if (entered === CORRECT_PIN) {
+    sessionStorage.setItem("pinUnlocked", "1");
+    overlay.classList.add("fade-out");
+    setTimeout(() => overlay.remove(), 380);
+  } else {
+    document.getElementById("pin-error").textContent = "PIN 碼錯誤，請再試一次";
+    const box = document.querySelector(".pin-box");
+    box.classList.add("shake");
+    setTimeout(() => {
+      box.classList.remove("shake");
+      digits.forEach(d => d.value = "");
+      document.getElementById("pin-error").textContent = "";
+      digits[0].focus();
+    }, 480);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  Init
+// ═══════════════════════════════════════════════════════════════════
+document.addEventListener("DOMContentLoaded", () => {
+  // PIN gate
+  initPin();
+
+  // Default date = today
+  document.getElementById("date-input").value = new Date().toISOString().split("T")[0];
+
+  // Form handler
+  document.getElementById("record-form").addEventListener("submit", handleSubmit);
+
+  // Kick off data load
+  loadData();
+});

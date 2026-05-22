@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>體溫週期追蹤</title>
+
+  <!-- Google Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Plotly.js -->
+  <script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
+
+  <style>
+    body { font-family: 'Noto Sans TC', sans-serif; background: #F3F4F6; }
+
+    .gradient-header { background: linear-gradient(135deg, #7C3AED 0%, #EC4899 100%); }
+
+    .card {
+      background: #fff;
+      border-radius: 12px;
+      padding: 16px;
+      box-shadow: 0 1px 3px rgba(0,0,0,.08);
+    }
+
+    .pred-card { border-left: 4px solid; }
+
+    /* Toast */
+    .toast {
+      position: fixed; bottom: 24px; right: 24px; z-index: 999;
+      padding: 12px 20px; border-radius: 8px; color: #fff; font-weight: 500;
+      transform: translateX(150%); transition: transform .3s ease;
+      max-width: 340px;
+    }
+    .toast.show { transform: translateX(0); }
+    .toast.success { background: #10B981; }
+    .toast.error   { background: #EF4444; }
+    .toast.info    { background: #6366F1; }
+
+    /* Chart container */
+    #chart { width: 100%; height: 460px; }
+
+    /* Event tags in table */
+    .tag-period    { background: #FEE2E2; color: #DC2626; padding: 2px 8px; border-radius: 99px; font-size: 12px; }
+    .tag-ovulation { background: #D1FAE5; color: #059669; padding: 2px 8px; border-radius: 99px; font-size: 12px; }
+
+    /* Loading spinner */
+    .spinner {
+      border: 3px solid #E5E7EB; border-top-color: #7C3AED;
+      border-radius: 50%; width: 34px; height: 34px;
+      animation: spin .7s linear infinite; margin: 32px auto;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Focus ring */
+    input:focus, select:focus {
+      outline: none; box-shadow: 0 0 0 3px rgba(124,58,237,.25);
+    }
+
+    /* PIN overlay */
+    #pin-overlay {
+      position: fixed; inset: 0; z-index: 9999;
+      background: linear-gradient(135deg, #7C3AED 0%, #EC4899 100%);
+      display: flex; align-items: center; justify-content: center;
+      transition: opacity .35s ease;
+    }
+    #pin-overlay.fade-out { opacity: 0; pointer-events: none; }
+    .pin-box {
+      background: rgba(255,255,255,.12); backdrop-filter: blur(10px);
+      border: 1px solid rgba(255,255,255,.25);
+      border-radius: 20px; padding: 40px 36px;
+      text-align: center; width: 300px;
+    }
+    .pin-digit {
+      width: 52px; height: 60px;
+      border: 2px solid rgba(255,255,255,.4); border-radius: 12px;
+      background: rgba(255,255,255,.15); color: #fff;
+      font-size: 28px; font-weight: 700; text-align: center;
+      caret-color: transparent; outline: none;
+      transition: border-color .2s;
+      -webkit-text-security: disc;
+    }
+    .pin-digit:focus { border-color: #fff; background: rgba(255,255,255,.25); }
+    @keyframes shake {
+      0%,100%{transform:translateX(0)}
+      20%{transform:translateX(-8px)}
+      40%{transform:translateX(8px)}
+      60%{transform:translateX(-6px)}
+      80%{transform:translateX(6px)}
+    }
+    .shake { animation: shake .45s ease; }
+  </style>
+</head>
+<body class="min-h-screen">
+
+  <!-- ── PIN overlay ────────────────────────────────────────────────────── -->
+  <div id="pin-overlay">
+    <div class="pin-box">
+      <div class="text-4xl mb-3">🌸</div>
+      <h2 class="text-white text-xl font-bold mb-1">體溫週期追蹤</h2>
+      <p class="text-purple-100 text-sm mb-6">請輸入 PIN 碼</p>
+      <div class="flex justify-center gap-3 mb-4">
+        <input class="pin-digit" type="password" inputmode="numeric" maxlength="1" />
+        <input class="pin-digit" type="password" inputmode="numeric" maxlength="1" />
+        <input class="pin-digit" type="password" inputmode="numeric" maxlength="1" />
+        <input class="pin-digit" type="password" inputmode="numeric" maxlength="1" />
+      </div>
+      <p id="pin-error" class="text-red-200 text-sm min-h-[20px]"></p>
+    </div>
+  </div>
+
+  <!-- ── Header ─────────────────────────────────────────────────────────── -->
+  <header class="gradient-header text-white px-4 py-5 shadow-md">
+    <div class="max-w-5xl mx-auto flex items-center justify-between flex-wrap gap-3">
+      <div>
+        <h1 class="text-2xl font-bold tracking-wide">🌸 體溫週期追蹤</h1>
+        <p class="text-purple-100 text-sm mt-0.5">基礎體溫 · 月經週期 · 排卵預測</p>
+      </div>
+      <a href="https://docs.google.com/spreadsheets/d/1RGMRPRJqeQuZxEVCrAQHTsmtLaMtOFiRDPafLLTI0jA/edit?gid=0#gid=0"
+         target="_blank" rel="noopener"
+         class="flex items-center gap-2 bg-white text-purple-600 px-4 py-2 rounded-full text-sm font-semibold hover:bg-purple-50 transition">
+        📊 Google Sheet
+      </a>
+    </div>
+  </header>
+
+  <!-- ── Main ───────────────────────────────────────────────────────────── -->
+  <main class="max-w-5xl mx-auto px-4 py-6 space-y-5">
+
+    <!-- Config warning -->
+    <div id="config-warning" class="hidden bg-yellow-50 border border-yellow-300 rounded-lg p-4 text-yellow-800 text-sm">
+      ⚠️ 尚未設定 API 位址。請開啟 <code class="bg-yellow-100 px-1 rounded">app.js</code>，
+      將 <code class="bg-yellow-100 px-1 rounded">CONFIG.API_URL</code> 更新為您的 Cloud Run 服務網址後重新整理頁面。
+    </div>
+
+    <!-- Loading state -->
+    <div id="loading-state" class="card text-center py-4">
+      <div class="spinner"></div>
+      <p class="text-gray-400 text-sm mt-1">連接中…</p>
+    </div>
+
+    <!-- Error state -->
+    <div id="error-state" class="hidden card border border-red-200 bg-red-50 text-red-700 p-4 flex items-center gap-3">
+      <span class="text-xl">⚠️</span>
+      <span><strong>無法載入資料：</strong><span id="error-msg"></span></span>
+      <button onclick="loadData()" class="ml-auto text-sm underline whitespace-nowrap">重試</button>
+    </div>
+
+    <!-- ── Main content (revealed after load) ────────────────────────────── -->
+    <div id="main-content" class="hidden space-y-5">
+
+      <!-- Prediction cards -->
+      <section>
+        <h2 class="text-base font-semibold text-gray-600 mb-3">📅 週期預測</h2>
+        <div id="pred-grid" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+          <!-- filled by JS -->
+        </div>
+      </section>
+
+      <!-- Chart -->
+      <div class="card">
+        <div class="flex items-start justify-between flex-wrap gap-2 mb-3">
+          <h2 class="text-base font-semibold text-gray-600">📈 體溫圖表</h2>
+          <!-- Legend -->
+          <div class="flex flex-wrap gap-3 text-xs text-gray-500">
+            <span class="flex items-center gap-1">
+              <span class="inline-block w-3 h-3 rounded-full bg-red-500"></span>月經第一天
+            </span>
+            <span class="flex items-center gap-1">
+              <span class="inline-block w-3 h-3 bg-emerald-500 rotate-45 transform scale-90"></span>排卵期
+            </span>
+            <span class="flex items-center gap-1">
+              <span class="inline-block w-4 border-t-2 border-dashed border-red-400 mt-0.5"></span>預計月經
+            </span>
+            <span class="flex items-center gap-1">
+              <span class="inline-block w-4 border-t-2 border-dashed border-emerald-400 mt-0.5"></span>預計排卵
+            </span>
+            <span class="flex items-center gap-1">
+              <span class="inline-block w-4 border-t-2 border-dotted border-gray-400 mt-0.5"></span>今天
+            </span>
+          </div>
+        </div>
+        <div id="chart"></div>
+        <div id="chart-empty" class="hidden text-center py-14 text-gray-400">尚無體溫記錄，請先新增記錄</div>
+      </div>
+
+      <!-- Add record form -->
+      <div class="card">
+        <h2 class="text-base font-semibold text-gray-600 mb-4">✏️ 新增 / 更新記錄</h2>
+        <form id="record-form" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+
+          <div>
+            <label class="block text-sm font-medium text-gray-500 mb-1">日期</label>
+            <input id="date-input" type="date" required
+              class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium text-gray-500 mb-1">體溫 (°C)</label>
+            <input id="temp-input" type="number" step="0.01" min="35" max="42"
+              placeholder="36.50" required
+              class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium text-gray-500 mb-1">事件（可選）</label>
+            <select id="event-input"
+              class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white">
+              <option value="">— 無特殊事件 —</option>
+              <option value="月經第一天">🩸 月經第一天</option>
+              <option value="排卵期">🥚 排卵期</option>
+            </select>
+          </div>
+
+          <div class="flex items-end">
+            <button id="submit-btn" type="submit"
+              class="w-full px-4 py-2 bg-purple-600 hover:bg-purple-700 active:bg-purple-800 text-white rounded-lg font-medium text-sm transition">
+              記錄
+            </button>
+          </div>
+        </form>
+      </div>
+
+      <!-- Records table -->
+      <div class="card">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="text-base font-semibold text-gray-600">📋 最近記錄</h2>
+          <span id="records-count" class="text-xs text-gray-400"></span>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b border-gray-100 text-left text-gray-400 text-xs uppercase tracking-wide">
+                <th class="pb-2 font-medium">日期</th>
+                <th class="pb-2 font-medium">體溫</th>
+                <th class="pb-2 font-medium">事件</th>
+                <th class="pb-2 font-medium text-right">操作</th>
+              </tr>
+            </thead>
+            <tbody id="records-tbody"></tbody>
+          </table>
+          <div id="records-empty" class="hidden text-center py-10 text-gray-300">尚無記錄</div>
+        </div>
+      </div>
+
+    </div><!-- /main-content -->
+  </main>
+
+  <!-- Toast -->
+  <div id="toast" class="toast"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
