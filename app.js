@@ -230,7 +230,68 @@ function renderChart() {
       fillcolor: "rgba(245,158,11,.07)", line: { width: 0 },
     });
   }
+  // ── BBT pattern ─────────────────────────────────────────────────────
+  if (p.bbt_coverline && p.last_period) {
+    const shiftEnd = p.bbt_shift_date || fmt(viewEnd);
+    const cycleEnd = p.predicted_next_period || fmt(viewEnd);
 
+    // Low-phase tint (period start → shift)
+    shapes.push({
+      type: "rect",
+      x0: p.last_period, x1: shiftEnd,
+      y0: 0, y1: 1, yref: "paper",
+      fillcolor: "rgba(147,197,253,.08)", line: { width: 0 },
+    });
+
+    // High-phase tint (shift → predicted next period)
+    if (p.bbt_shift_date) {
+      shapes.push({
+        type: "rect",
+        x0: p.bbt_shift_date, x1: cycleEnd,
+        y0: 0, y1: 1, yref: "paper",
+        fillcolor: "rgba(252,165,165,.08)", line: { width: 0 },
+      });
+    }
+
+    // Coverline — horizontal dashed grey line across current cycle
+    shapes.push({
+      type: "line",
+      x0: p.last_period, x1: cycleEnd,
+      y0: p.bbt_coverline, y1: p.bbt_coverline,
+      xref: "x", yref: "y",
+      line: { color: "rgba(107,114,128,.45)", width: 1.5, dash: "dot" },
+    });
+    annotations.push({
+      x: p.last_period, y: p.bbt_coverline,
+      xref: "x", yref: "y",
+      text: `基線 ${p.bbt_coverline}°C`,
+      showarrow: false,
+      font: { color: "#6B7280", size: 9 },
+      xanchor: "left", yanchor: "bottom",
+    });
+  }
+
+  // BBT-detected ovulation marker (only when no manual 排卵期 on that date)
+  if (p.bbt_detected_ovulation) {
+    const alreadyMarked = (p.ovulation_days || []).includes(p.bbt_detected_ovulation);
+    if (!alreadyMarked) {
+      shapes.push({
+        type: "line",
+        x0: p.bbt_detected_ovulation, x1: p.bbt_detected_ovulation,
+        y0: 0, y1: 1, yref: "paper",
+        line: { color: "rgba(16,185,129,.65)", width: 2, dash: "longdash" },
+      });
+      annotations.push({
+        x: p.bbt_detected_ovulation, y: 0.74, yref: "paper",
+        text: "BBT排卵",
+        showarrow: false,
+        font: { color: "#10B981", size: 10 },
+        bgcolor: "rgba(255,255,255,.88)",
+        bordercolor: "#10B981", borderwidth: 1, borderpad: 3,
+        xanchor: "center",
+      });
+    }
+  }
   // Predicted future cycles — dashed lines
   (p.future_periods || []).forEach((d, i) => {
     vline(d, "rgba(239,68,68,.38)", "dash");
@@ -246,9 +307,15 @@ function renderChart() {
   const minY = Math.max(35.5, Math.min(...temps) - 0.15);
   const maxY = Math.min(38.5, Math.max(...temps) + 0.25);
 
+  // Default view: 30 days back → 12 days forward
+  const viewStart = new Date(); viewStart.setDate(viewStart.getDate() - 30);
+  const viewEnd   = new Date(); viewEnd.setDate(viewEnd.getDate() + 12);
+  const fmt = d => d.toISOString().split("T")[0];
+
   const layout = {
     xaxis: {
       type: "date", tickformat: "%m/%d",
+      range: [fmt(viewStart), fmt(viewEnd)],
       showgrid: true, gridcolor: "#F3F4F6",
       title: { text: "" },
     },
