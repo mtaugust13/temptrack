@@ -193,13 +193,16 @@ function renderChart() {
   const temps = tempRecords.map(r => r.temperature);
 
   // ── Traces ──────────────────────────────────────────────────────
+  const EVENT_LABELS = { "月經第一天": "🫘 月經第一天", "排卵期": "🥚 排卵期", "同房": "💑 同房" };
+
   const traceLine = {
     type: "scatter", mode: "lines+markers",
     x: dates, y: temps,
     name: "基礎體溫",
     line:   { color: "#7C3AED", width: 2 },
     marker: { size: 5, color: "#7C3AED" },
-    hovertemplate: "<b>%{x}</b><br>體溫：%{y}°C<extra></extra>",
+    customdata: tempRecords.map(r => r.event ? `<br>${EVENT_LABELS[r.event] || r.event}` : ""),
+    hovertemplate: "<b>%{x}</b><br>體溫：%{y}°C%{customdata}<extra></extra>",
   };
 
   const traces = [traceLine];
@@ -395,7 +398,7 @@ function renderChart() {
     },
     shapes, annotations,
     legend: { orientation: "h", y: -0.2, x: 0.5, xanchor: "center" },
-    hovermode: "closest",
+    hovermode: "x unified",
     plot_bgcolor:  "#FAFAFA",
     paper_bgcolor: "#FFFFFF",
     margin: { l: 55, r: 18, t: 12, b: 60 },
