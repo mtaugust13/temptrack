@@ -214,7 +214,7 @@ function renderChart() {
       y: periodRecs.map(r => r.temperature),
       name: "月經第一天",
       marker: { color: "#EF4444", symbol: "circle",  size: 10, line: { color: "#fff", width: 2 } },
-      hovertemplate: "<b>%{x}</b><br>🩸 月經第一天<br>%{y}°C<extra></extra>",
+      hoverinfo: "skip",
     });
   }
 
@@ -225,7 +225,7 @@ function renderChart() {
       y: ovulationRecs.map(r => r.temperature),
       name: "排卵期",
       marker: { color: "#10B981", symbol: "diamond", size: 10, line: { color: "#fff", width: 2 } },
-      hovertemplate: "<b>%{x}</b><br>🥚 排卵期<br>%{y}°C<extra></extra>",
+      hoverinfo: "skip",
     });
   }
 
@@ -237,7 +237,7 @@ function renderChart() {
       y: sexRecs.map(r => r.temperature),
       name: "同房",
       marker: { color: "#F59E0B", symbol: "circle", size: 8, line: { color: "#fff", width: 2 } },
-      hovertemplate: "<b>%{x}</b><br>💑 同房<br>%{y}°C<extra></extra>",
+      hoverinfo: "skip",
     });
   }
 
