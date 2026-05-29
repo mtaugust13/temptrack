@@ -591,8 +591,6 @@ function showToast(msg, type = "info") {
 // ═══════════════════════════════════════════════════════════════════
 //  PIN lock
 // ═══════════════════════════════════════════════════════════════════
-const CORRECT_PIN = "0209";
-
 function initPin() {
   const overlay = document.getElementById("pin-overlay");
 
@@ -622,23 +620,36 @@ function initPin() {
   });
 }
 
-function verifyPin(digits, overlay) {
+async function verifyPin(digits, overlay) {
   const entered = digits.map(d => d.value).join("");
-  if (entered === CORRECT_PIN) {
-    sessionStorage.setItem("pinUnlocked", "1");
-    overlay.classList.add("fade-out");
-    setTimeout(() => overlay.remove(), 380);
-  } else {
-    document.getElementById("pin-error").textContent = "PIN 碼錯誤，請再試一次";
-    const box = document.querySelector(".pin-box");
-    box.classList.add("shake");
-    setTimeout(() => {
-      box.classList.remove("shake");
-      digits.forEach(d => d.value = "");
-      document.getElementById("pin-error").textContent = "";
-      digits[0].focus();
-    }, 480);
+  try {
+    const response = await fetch(`${CONFIG.API_URL}/api/pin/verify`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ pin: entered }),
+    });
+
+    if (response.ok) {
+      sessionStorage.setItem("pinUnlocked", "1");
+      overlay.classList.add("fade-out");
+      setTimeout(() => overlay.remove(), 380);
+      return;
+    }
+
+    const payload = await response.json().catch(() => ({}));
+    document.getElementById("pin-error").textContent = payload.error || "PIN 碼錯誤，請再試一次";
+  } catch (error) {
+    document.getElementById("pin-error").textContent = "無法驗證 PIN，請稍後再試";
   }
+
+  const box = document.querySelector(".pin-box");
+  box.classList.add("shake");
+  setTimeout(() => {
+    box.classList.remove("shake");
+    digits.forEach(d => d.value = "");
+    document.getElementById("pin-error").textContent = "";
+    digits[0].focus();
+  }, 480);
 }
 
 // ═══════════════════════════════════════════════════════════════════
