@@ -102,7 +102,9 @@ function renderCycleInsight() {
 // ═══════════════════════════════════════════════════════════════════
 function renderPredictions() {
   const p = appData.predictions || {};
-  const container = document.getElementById("pred-panel");
+  const container = document.getElementById("pred-panel") || document.getElementById("pred-grid");
+
+  if (!container) return;
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -194,6 +196,8 @@ function renderChart() {
   const chartEl  = document.getElementById("chart");
   const emptyEl  = document.getElementById("chart-empty");
   const baselineNoteEl = document.getElementById("baseline-note");
+
+  if (!chartEl || !emptyEl) return;
 
   const shapes      = [];
   const annotations = [];
