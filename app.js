@@ -102,7 +102,7 @@ function renderCycleInsight() {
 // ═══════════════════════════════════════════════════════════════════
 function renderPredictions() {
   const p = appData.predictions || {};
-  const container = document.getElementById("pred-grid");
+  const container = document.getElementById("pred-panel");
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -126,18 +126,16 @@ function renderPredictions() {
     return `${parseInt(m)}/${parseInt(d)}`;
   }
 
-  const cards = [
+  const items = [
     {
       icon: "🩸", title: "上次月經",
       value: fmt(p.last_period),
       sub: p.last_period || "尚無記錄",
-      color: "#EF4444", bg: "#FEF2F2",
     },
     {
       icon: "🥚", title: "預計排卵期",
       value: fmt(p.predicted_ovulation),
       sub: daysLabel(p.predicted_ovulation),
-      color: "#10B981", bg: "#ECFDF5",
     },
     {
       icon: "✨", title: "易孕期",
@@ -145,30 +143,46 @@ function renderPredictions() {
         ? `${fmt(p.fertile_window_start)} – ${fmt(p.fertile_window_end)}`
         : "—",
       sub: p.fertile_window_confirmed ? "BBT 確認 ✓" : "排卵前 5 天至排卵日",
-      color: "#F59E0B", bg: "#FFFBEB",
     },
     {
       icon: "📅", title: "預計下次月經",
       value: fmt(p.predicted_next_period),
       sub: daysLabel(p.predicted_next_period),
-      color: "#8B5CF6", bg: "#F5F3FF",
     },
     {
       icon: "📊", title: "平均週期",
       value: p.avg_cycle_length ? `${p.avg_cycle_length} 天` : "—",
       sub: p.data_cycles ? `基於 ${p.data_cycles} 個週期` : "使用預設值 28 天",
-      color: "#6366F1", bg: "#EEF2FF",
     },
   ];
 
-  container.innerHTML = cards.map(c => `
-    <div class="card pred-card" style="border-left-color:${c.color};background:${c.bg};">
-      <div class="text-xl mb-1">${c.icon}</div>
-      <div class="text-xs font-medium text-gray-400 mb-1">${c.title}</div>
-      <div class="text-lg font-bold leading-tight" style="color:${c.color}">${c.value}</div>
-      <div class="text-xs text-gray-400 mt-1">${c.sub}</div>
+  const colorMap = {
+    "上次月經": "#EF4444",
+    "預計排卵期": "#10B981",
+    "易孕期": "#F59E0B",
+    "預計下次月經": "#8B5CF6",
+    "平均週期": "#6366F1",
+  };
+
+  const rows = items.map(c => `
+    <div class="flex items-start justify-between gap-4 py-3 ${c.title !== "上次月經" ? "border-t border-slate-100" : ""}">
+      <div class="min-w-0 flex items-start gap-3">
+        <div class="text-lg leading-none mt-0.5">${c.icon}</div>
+        <div class="min-w-0">
+          <div class="text-xs font-medium text-slate-400 mb-0.5">${c.title}</div>
+          <div class="font-semibold text-slate-700 break-words" style="color:${colorMap[c.title]}">${c.value}</div>
+        </div>
+      </div>
+      <div class="shrink-0 text-right text-xs text-slate-400 max-w-[44%] leading-relaxed">${c.sub}</div>
     </div>
   `).join("");
+
+  container.innerHTML = `
+    <div class="px-4 divide-y divide-slate-100">
+      ${rows}
+      <div id="cycle-insight" class="py-3 text-xs text-slate-500 leading-relaxed"></div>
+    </div>
+  `;
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -179,10 +193,29 @@ function renderChart() {
 
   const chartEl  = document.getElementById("chart");
   const emptyEl  = document.getElementById("chart-empty");
+  const baselineNoteEl = document.getElementById("baseline-note");
+
+  const shapes      = [];
+  const annotations = [];
+
+  // Default view: 30 days back → 12 days forward
+  const viewStart = new Date(); viewStart.setDate(viewStart.getDate() - 30);
+  const viewEnd   = new Date(); viewEnd.setDate(viewEnd.getDate() + 12);
+  const fmt = d => d.toISOString().split("T")[0];
+  const isMobile = window.matchMedia("(max-width: 640px)").matches;
 
   if (!records || records.length === 0) {
     chartEl.style.display = "none";
     emptyEl.classList.remove("hidden");
+    if (baselineNoteEl) {
+      baselineNoteEl.innerHTML = `
+        <div class="font-semibold text-slate-700 mb-1">📌 BBT 讀法</div>
+        <div>高溫一直維持到預計月經日後，較像 <strong>可能懷孕</strong>。</div>
+        <div>高溫先回落、接近月經日，較像 <strong>未懷孕</strong>。</div>
+        <div>基線（coverline）：<strong>排卵日前 5 天加排卵日</strong>，共 6 筆體溫中的最高值；不含升溫當天。</div>
+        <div>3 天規則：<strong>連續 3 筆體溫都高於基線</strong>，就算升溫成立。</div>
+      `;
+    }
     return;
   }
   chartEl.style.display = "block";
@@ -190,6 +223,18 @@ function renderChart() {
 
   const tempRecords = records.filter(r => r.temperature !== null);
   const dates = tempRecords.map(r => r.date);
+
+  if (baselineNoteEl) {
+    const coverline = p.bbt_coverline ? `${p.bbt_coverline.toFixed(2)}°C` : "尚未偵測到";
+    baselineNoteEl.innerHTML = `
+      <div class="font-semibold text-slate-700 mb-1">📌 BBT 讀法</div>
+      <div>高溫一直維持到預計月經日後，較像 <strong>可能懷孕</strong>。</div>
+      <div>高溫先回落、接近月經日，較像 <strong>未懷孕</strong>。</div>
+      <div>基線（coverline）：<strong>排卵日前 5 天加排卵日</strong>，共 6 筆體溫中的最高值；不含升溫當天。</div>
+      <div>3 天規則：<strong>連續 3 筆體溫都高於基線</strong>，就算升溫成立。</div>
+      <div>目前基線：<strong>${coverline}</strong></div>
+    `;
+  }
   const temps = tempRecords.map(r => r.temperature);
 
   // ── Traces ──────────────────────────────────────────────────────
@@ -256,10 +301,6 @@ function renderChart() {
       text: "💑", showarrow: false, font: { size: 11 },
     });
   });
-
-  // ── Shapes & Annotations ────────────────────────────────────────
-  const shapes      = [];
-  const annotations = [];
 
   function vline(date, color, dash = "solid") {
     shapes.push({
@@ -378,31 +419,34 @@ function renderChart() {
   const minY = Math.max(35.5, Math.min(...temps) - 0.15);
   const maxY = Math.min(38.5, Math.max(...temps) + 0.25);
 
-  // Default view: 30 days back → 12 days forward
-  const viewStart = new Date(); viewStart.setDate(viewStart.getDate() - 30);
-  const viewEnd   = new Date(); viewEnd.setDate(viewEnd.getDate() + 12);
-  const fmt = d => d.toISOString().split("T")[0];
-
   const layout = {
     xaxis: {
       type: "date", tickformat: "%m/%d",
       range: [fmt(viewStart), fmt(viewEnd)],
       showgrid: true, gridcolor: "#F3F4F6",
       title: { text: "" },
+      tickfont: { size: isMobile ? 10 : 12 },
     },
     yaxis: {
       title: { text: "體溫 (°C)" },
       range: [minY, maxY],
       showgrid: true, gridcolor: "#F3F4F6",
       dtick: 0.1,
+      tickfont: { size: isMobile ? 10 : 12 },
     },
     shapes, annotations,
-    legend: { orientation: "h", y: -0.2, x: 0.5, xanchor: "center" },
+    legend: {
+      orientation: "h",
+      y: isMobile ? -0.34 : -0.2,
+      x: 0.5,
+      xanchor: "center",
+      font: { size: isMobile ? 10 : 12 },
+    },
     hovermode: "x unified",
     plot_bgcolor:  "#FAFAFA",
     paper_bgcolor: "#FFFFFF",
-    margin: { l: 55, r: 18, t: 12, b: 60 },
-    font: { family: "Noto Sans TC, sans-serif", size: 12 },
+    margin: { l: isMobile ? 44 : 55, r: 12, t: 12, b: isMobile ? 110 : 60 },
+    font: { family: "Noto Sans TC, sans-serif", size: isMobile ? 11 : 12 },
   };
 
   Plotly.newPlot("chart", traces, layout, { responsive: true, displayModeBar: false });
