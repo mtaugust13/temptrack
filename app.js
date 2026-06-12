@@ -524,6 +524,35 @@ async function handleSubmit(e) {
     }
   }
 
+  let recordsForConflictCheck = appData.records || [];
+  if (hasTemp) {
+    try {
+      const latestData = await apiRequest("/api/data");
+      if (latestData && Array.isArray(latestData.records)) {
+        appData = latestData;
+        recordsForConflictCheck = latestData.records;
+      }
+    } catch (err) {
+      showToast(`Could not check existing saved temperature: ${err.message}`, "error");
+      return;
+    }
+  }
+
+  const existingRecord = recordsForConflictCheck.find(r => r.date === date);
+  const existingTemp = existingRecord && existingRecord.temperature !== null && existingRecord.temperature !== undefined
+    ? Number(existingRecord.temperature)
+    : null;
+
+  if (hasTemp && existingTemp !== null) {
+    const shouldOverwrite = confirm(
+      `There is already a saved temperature for ${date}:\n\n` +
+      `Saved: ${existingTemp.toFixed(2)} C\n` +
+      `New: ${temperature.toFixed(2)} C\n\n` +
+      "Do you want to overwrite it?"
+    );
+    if (!shouldOverwrite) return;
+  }
+
   btn.disabled    = true;
   btn.textContent = "記錄中…";
 
