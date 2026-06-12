@@ -385,6 +385,24 @@ function renderChart() {
         xanchor: "left", yanchor: "bottom",
       });
     }
+
+    if (!p.bbt_coverline && p.previous_bbt_coverline) {
+      shapes.push({
+        type: "line",
+        x0: p.last_period, x1: cycleEnd,
+        y0: p.previous_bbt_coverline, y1: p.previous_bbt_coverline,
+        xref: "x", yref: "y",
+        line: { color: "rgba(148,163,184,.55)", width: 1.5, dash: "dashdot" },
+      });
+      annotations.push({
+        x: p.last_period, y: p.previous_bbt_coverline,
+        xref: "x", yref: "y",
+        text: `Last cycle ${p.previous_bbt_coverline}C`,
+        showarrow: false,
+        font: { color: "#64748B", size: 9 },
+        xanchor: "left", yanchor: "bottom",
+      });
+    }
   }
 
   // BBT-detected ovulation marker (only when no manual 排卵期 on that date)
